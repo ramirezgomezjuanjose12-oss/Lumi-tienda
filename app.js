@@ -60,20 +60,14 @@ function cargarCatalogo() {
   if (guardado) {
     try {
       const parsed = JSON.parse(guardado);
-      // Sincronizar las clasificaciones actualizadas de colores solicitadas
-      catalogo = parsed.map(item => {
-        const baseMatch = PRODUCTOS_BASE.find(b => b.ref === item.ref);
-        if (baseMatch) {
-          return {
-            ...item,
-            color: baseMatch.color,
-            nombre: baseMatch.nombre,
-            colorLabel: baseMatch.colorLabel || item.colorLabel,
-            hex: baseMatch.hex || item.hex
-          };
-        }
-        return item;
+      // Extraer bolsos personalizados agregados por la dueña
+      const customItems = parsed.filter(item => !PRODUCTOS_BASE.some(b => b.ref === item.ref));
+      // Sincronizar los base con la nueva secuencia optimizada comercialmente
+      const baseActualizados = PRODUCTOS_BASE.map(baseItem => {
+        const stored = parsed.find(b => b.ref === baseItem.ref);
+        return stored ? { ...baseItem, precio: stored.precio || baseItem.precio } : baseItem;
       });
+      catalogo = [...baseActualizados, ...customItems];
       guardarCatalogoEnStorage();
     } catch(e) {
       catalogo = [...PRODUCTOS_BASE];
@@ -85,6 +79,53 @@ function cargarCatalogo() {
 
 function guardarCatalogoEnStorage() {
   localStorage.setItem('lumi_catalogo_custom', JSON.stringify(catalogo));
+}
+
+// Regla comercial fundamental:
+// Los bolsos más caros NUNCA deben salir en las 3 primeras posiciones (1ro, 2do o 3ro).
+// Deben empezar a salir a partir de la 4ta posición, garantizando un enganche comercial accesible.
+function aplicarReglaComercialPrecios(items) {
+  if (!items || items.length <= 3) return items;
+
+  const preciosDesc = items.map(p => p.precio).sort((a, b) => b - a);
+  const maxPrecio = preciosDesc[0];
+  const minPrecio = preciosDesc[preciosDesc.length - 1];
+
+  if (maxPrecio === minPrecio) return items;
+
+  // Umbral para bolsos más caros (>= $85.000 o el percentil superior)
+  const umbralCaro = Math.max(85000, preciosDesc[Math.floor(preciosDesc.length * 0.25)] || 85000);
+
+  const caros = [];
+  const accesibles = [];
+
+  items.forEach(item => {
+    if (item.precio >= umbralCaro) {
+      caros.push(item);
+    } else {
+      accesibles.push(item);
+    }
+  });
+
+  // Si no hay suficientes accesibles para llenar al menos 3 posiciones iniciales, ordenar ascendente
+  if (accesibles.length < 3) {
+    return [...items].sort((a, b) => a.precio - b.precio);
+  }
+
+  // Las 3 primeras posiciones quedan estrictamente reservadas para bolsos accesibles
+  const resultado = [];
+  resultado.push(accesibles.shift());
+  resultado.push(accesibles.shift());
+  resultado.push(accesibles.shift());
+
+  // A partir de la 4ta posición se intercalan los más caros con el resto
+  while (caros.length > 0 || accesibles.length > 0) {
+    if (caros.length > 0) resultado.push(caros.shift());
+    if (accesibles.length > 0) resultado.push(accesibles.shift());
+    if (accesibles.length > 0) resultado.push(accesibles.shift());
+  }
+
+  return resultado;
 }
 
 function cargarFavoritos() {
@@ -164,9 +205,18 @@ export function renderCatalogo() {
     return true;
   });
 
-  if (currentSort === 'price-asc') filtrados.sort((a, b) => a.precio - b.precio);
-  else if (currentSort === 'price-desc') filtrados.sort((a, b) => b.precio - a.precio);
-  else if (currentSort === 'name-asc') filtrados.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  if (currentSort === 'price-asc') {
+    filtrados.sort((a, b) => a.precio - b.precio);
+  } else if (currentSort === 'price-desc') {
+    filtrados.sort((a, b) => b.precio - a.precio);
+  } else if (currentSort === 'name-asc') {
+    filtrados.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  } else {
+    // Orden recomendado (default):
+    // Regla fundamental: nunca mostrar los bolsos más caros de 1ro, 2do o 3ro.
+    // Salen a partir del 4to puesto en adelante.
+    filtrados = aplicarReglaComercialPrecios(filtrados);
+  }
 
   counter.innerText = `Mostrando ${filtrados.length} ${filtrados.length === 1 ? 'bolso' : 'bolsos'}`;
 
