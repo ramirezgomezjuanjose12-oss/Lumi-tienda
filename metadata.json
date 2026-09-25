@@ -1,0 +1,8 @@
+{
+  "name": "Lumi Shop - Catálogo Oficial",
+  "description": "Catálogo exclusivo de bolsos y accesorios con pedido por WhatsApp",
+  "version": "1.0.0",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
